@@ -5,16 +5,84 @@ Provides power system analysis tools using pandapower.
 
 from typing import Dict, List, Optional, Any
 import json
+import inspect
 
 try:
     import pandapower as pp
+    import pandapower.networks as pp_networks
     PANDAPOWER_AVAILABLE = True
 except ImportError:
     PANDAPOWER_AVAILABLE = False
     pp = None
+    pp_networks = None
 
 # Global variable to store the current network
 _current_net = None
+
+
+def _get_available_networks() -> Dict[str, Any]:
+    """Dynamically discover all available network functions in pandapower.networks.
+    
+    Returns:
+        Dict mapping network names to their callable functions
+    """
+    if not PANDAPOWER_AVAILABLE:
+        return {}
+    
+    network_functions = {}
+    
+    # Get all members of pp.networks module
+    for name, obj in inspect.getmembers(pp_networks):
+        # Skip private/internal items
+        if name.startswith('_'):
+            continue
+        
+        # Check if it's a callable (function) that could create a network
+        if callable(obj):
+            # Try to determine if this function creates a network
+            # Most network functions either:
+            # 1. Start with 'case' (IEEE cases)
+            # 2. Start with 'create_' (CIGRE networks, etc.)
+            # 3. Are known network names (iceland, GBnetwork, etc.)
+            # 4. Return a pandapower network
+            
+            # Get function signature to check if it can be called with no required args
+            try:
+                sig = inspect.signature(obj)
+                # Check if all parameters have defaults (can be called without args)
+                can_call_without_args = all(
+                    p.default != inspect.Parameter.empty 
+                    for p in sig.parameters.values()
+                )
+            except (ValueError, TypeError):
+                can_call_without_args = False
+            
+            # Include functions that look like network creators
+            if (name.startswith('case') or 
+                name.startswith('create_') or
+                name in ['iceland', 'GBnetwork', 'GBreducednetwork', 
+                         'simple_four_bus_system', 'simple_mv_open_ring_net',
+                         'mv_oberrhein', 'panda_four_load_branch',
+                         'four_loads_with_branches_out', 'example_simple',
+                         'example_multivoltage', 'kb_extrem_landnetz_trafo',
+                         'kb_extrem_landnetz_freileitung', 'kb_extrem_vorstadtnetz_trafo',
+                         'kb_extrem_vorstadtnetz_kabel'] or
+                can_call_without_args):
+                network_functions[name] = obj
+    
+    return network_functions
+
+
+# Cache the available networks to avoid repeated inspection
+_NETWORK_FUNCTIONS_CACHE = None
+
+
+def _get_network_functions():
+    """Get cached network functions or build cache."""
+    global _NETWORK_FUNCTIONS_CACHE
+    if _NETWORK_FUNCTIONS_CACHE is None:
+        _NETWORK_FUNCTIONS_CACHE = _get_available_networks()
+    return _NETWORK_FUNCTIONS_CACHE
 
 
 def _get_network():
@@ -59,16 +127,17 @@ def create_empty_network() -> Dict[str, Any]:
 
 
 def create_test_network(network_type: str = "case9") -> Dict[str, Any]:
-    """Create a standard IEEE test network.
+    """Create a standard IEEE test network or other built-in pandapower network.
     
     Args:
-        network_type: Type of test network (case4gs, case5, case6ww, case9, case14, 
-                      case24_ieee_rts, case30, case33bw, case39, case57, case89pegase,
-                      case118, case145, case300, case1354pegase, case1888rte, case2848rte,
-                      case2869pegase, case3120sp, case6470rte, case6495rte, case6515rte,
-                      case9241pegase, GBnetwork, GBreducednetwork, iceland,
-                      cigre_network_hv, cigre_network_mv, cigre_network_lv, mv_oberrhein,
-                      simple_four_bus_system, simple_mv_open_ring_net)
+        network_type: Type of test network. Use get_available_networks() to see all options.
+                      Common examples: case4gs, case5, case6ww, case9, case14, case24_ieee_rts,
+                      case30, case33bw, case39, case57, case89pegase, case118, case145, case300,
+                      case1354pegase, case1888rte, case2848rte, case2869pegase, case3120sp,
+                      case6470rte, case6495rte, case6515rte, case9241pegase, GBnetwork,
+                      GBreducednetwork, iceland, create_cigre_network_hv, create_cigre_network_mv,
+                      create_cigre_network_lv, mv_oberrhein, simple_four_bus_system,
+                      simple_mv_open_ring_net, example_simple, example_multivoltage, and more.
     
     Returns:
         Dict containing status and network information
@@ -78,47 +147,22 @@ def create_test_network(network_type: str = "case9") -> Dict[str, Any]:
     
     global _current_net
     try:
-        network_functions = {
-            "case4gs": pp.networks.case4gs,
-            "case5": pp.networks.case5,
-            "case6ww": pp.networks.case6ww,
-            "case9": pp.networks.case9,
-            "case14": pp.networks.case14,
-            "case24_ieee_rts": pp.networks.case24_ieee_rts,
-            "case30": pp.networks.case30,
-            "case33bw": pp.networks.case33bw,
-            "case39": pp.networks.case39,
-            "case57": pp.networks.case57,
-            "case89pegase": pp.networks.case89pegase,
-            "case118": pp.networks.case118,
-            "case145": pp.networks.case145,
-            "case300": pp.networks.case300,
-            "case1354pegase": pp.networks.case1354pegase,
-            "case1888rte": pp.networks.case1888rte,
-            "case2848rte": pp.networks.case2848rte,
-            "case2869pegase": pp.networks.case2869pegase,
-            "case3120sp": pp.networks.case3120sp,
-            "case6470rte": pp.networks.case6470rte,
-            "case6495rte": pp.networks.case6495rte,
-            "case6515rte": pp.networks.case6515rte,
-            "case9241pegase": pp.networks.case9241pegase,
-            "GBnetwork": pp.networks.GBnetwork,
-            "GBreducednetwork": pp.networks.GBreducednetwork,
-            "iceland": pp.networks.iceland,
-            "cigre_network_hv": lambda: pp.networks.create_cigre_network_hv(),
-            "cigre_network_mv": lambda: pp.networks.create_cigre_network_mv(),
-            "cigre_network_lv": lambda: pp.networks.create_cigre_network_lv(),
-            "mv_oberrhein": lambda: pp.networks.mv_oberrhein(),
-            "simple_four_bus_system": pp.networks.simple_four_bus_system,
-            "simple_mv_open_ring_net": pp.networks.simple_mv_open_ring_net,
-        }
+        network_functions = _get_network_functions()
         
         if network_type not in network_functions:
-            return {
-                "status": "error",
-                "message": f"Unknown network type: {network_type}",
-                "available_types": list(network_functions.keys())
-            }
+            # Try to find a close match (case-insensitive)
+            lower_type = network_type.lower()
+            for key in network_functions:
+                if key.lower() == lower_type:
+                    network_type = key
+                    break
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Unknown network type: {network_type}",
+                    "available_types": sorted(list(network_functions.keys())),
+                    "hint": "Use get_available_networks() to see all available network types"
+                }
         
         _current_net = network_functions[network_type]()
         
@@ -134,6 +178,53 @@ def create_test_network(network_type: str = "case9") -> Dict[str, Any]:
                 "ext_grids": len(_current_net.ext_grid),
                 "shunts": len(_current_net.shunt) if hasattr(_current_net, 'shunt') else 0
             }
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def get_available_networks() -> Dict[str, Any]:
+    """Get a list of all available pandapower test networks.
+    
+    Returns:
+        Dict containing list of available network types with descriptions
+    """
+    if not PANDAPOWER_AVAILABLE:
+        return {"status": "error", "message": "pandapower is not installed"}
+    
+    try:
+        network_functions = _get_network_functions()
+        
+        # Categorize networks
+        ieee_cases = []
+        pegase_cases = []
+        rte_cases = []
+        cigre_networks = []
+        other_networks = []
+        
+        for name in sorted(network_functions.keys()):
+            if name.startswith('case') and 'pegase' in name.lower():
+                pegase_cases.append(name)
+            elif name.startswith('case') and 'rte' in name.lower():
+                rte_cases.append(name)
+            elif name.startswith('case'):
+                ieee_cases.append(name)
+            elif 'cigre' in name.lower():
+                cigre_networks.append(name)
+            else:
+                other_networks.append(name)
+        
+        return {
+            "status": "success",
+            "total_networks": len(network_functions),
+            "categories": {
+                "ieee_cases": ieee_cases,
+                "pegase_cases": pegase_cases,
+                "rte_cases": rte_cases,
+                "cigre_networks": cigre_networks,
+                "other_networks": other_networks
+            },
+            "all_networks": sorted(list(network_functions.keys()))
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
