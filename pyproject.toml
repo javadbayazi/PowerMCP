@@ -115,7 +115,7 @@ Repository = "https://github.com/Power-Agent/PowerMCP"
 "Bug Tracker" = "https://github.com/Power-Agent/PowerMCP/issues"
 
 [tool.setuptools]
-packages = ["common", "ANDES", "Egret", "OpenDSS", "pandapower", "PowerWorld", "PSLF", "PSSE", "PSSE35", "PyLTSpice", "PyPSA"]
+packages = ["common", "ANDES", "Egret", "OpenDSS", "pandapower_tools", "PowerWorld", "PSLF", "PSSE", "PSSE35", "PyLTSpice", "pypsa_tools"]
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.dss", "*.csv", "*.pwb", "*.pwd", "*.sav", "*.dyr", "*.dyd", "*.m", "*.nc", "*.otg", "*.cntl", "*.dycr", "*.con", "*.mon", "*.sub"]

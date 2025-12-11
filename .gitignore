@@ -128,6 +128,7 @@ dmypy.json
 *.swp
 *.swo
 *~
+.cursor/
 
 # OS
 .DS_Store
@@ -137,7 +138,13 @@ Thumbs.db
 *.log
 *.out
 *.tmp
+*.nc
+*.h5
 
 # UV package manager
 .uv/
 uv.lock
+
+# MCP/Gradio
+flagged/
+*.gradio/
